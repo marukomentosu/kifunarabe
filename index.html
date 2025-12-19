@@ -2,143 +2,135 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>将棋システム - htmlマン２ Professional</title>
     <style>
         :root { 
             --board-bg: #e6b450; 
-            --cell-size: 55px; 
+            /* 盤面が画面を突き抜けないよう、幅と高さの小さい方を基準にサイズを計算 */
+            --cell-size: min(8vw, 8vh, 50px); 
             --border: #333; 
         }
-        /* スマホ向けのサイズ調整 */
-        @media (max-width: 600px) { :root { --cell-size: 10vw; } }
+        @media (max-width: 600px) { :root { --cell-size: 9.5vmin; } }
 
-        body { font-family: "MS Mincho", serif; background: #f0f0f0; margin: 0; padding: 10px; display: flex; justify-content: center; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: "MS Mincho", serif; background: #f0f0f0; margin: 0; 
+            height: 100vh; width: 100vw; overflow: hidden; /* 全体スクロールを禁止 */
+            display: flex; justify-content: center; align-items: center;
+        }
         
-        /* ワークスペース：PCでは横並び、スマホでは縦並び */
+        /* メインワークスペース */
         .workspace { 
-            display: flex; 
-            gap: 20px; 
-            flex-wrap: wrap; 
-            justify-content: center; 
-            width: 100%;
-            max-width: 1400px;
+            display: flex; gap: 15px; width: 100%; height: 100%; max-height: 100vh;
+            padding: 10px; justify-content: center; align-items: flex-start;
         }
 
-        /* 1. 盤面エリア */
-        .board-section { flex: 0 1 auto; display: flex; flex-direction: column; align-items: center; }
+        /* 1. 盤面エリア（中央配置） */
+        .board-section { 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; flex: 0 0 auto;
+        }
         .board-container { 
-            position: relative; 
-            padding: 30px 40px 40px 30px; 
-            background: #d4a74a; 
-            border: 4px solid #b38d39; 
-            border-radius: 4px; 
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2); 
-            user-select: none;
+            position: relative; padding: 25px 35px 35px 25px; 
+            background: #d4a74a; border: 3px solid #b38d39; border-radius: 4px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2); user-select: none;
         }
         .board { 
             display: grid; 
             grid-template-columns: repeat(9, var(--cell-size)); 
             grid-template-rows: repeat(9, var(--cell-size)); 
-            background: var(--board-bg); 
-            border: 2px solid var(--border); 
+            background: var(--board-bg); border: 1.5px solid var(--border); 
         }
         .cell { 
-            width: var(--cell-size); height: var(--cell-size); 
-            border: 0.5px solid var(--border); 
+            width: var(--cell-size); height: var(--cell-size); border: 0.5px solid var(--border); 
             display: flex; justify-content: center; align-items: center; 
-            font-size: calc(var(--cell-size) * 0.6); cursor: pointer; position: relative; 
+            font-size: calc(var(--cell-size) * 0.65); cursor: pointer; position: relative; 
         }
 
         /* 座標ラベル */
-        .label-h { position: absolute; top: 5px; width: var(--cell-size); text-align: center; font-weight: bold; font-size: 0.8rem; }
-        .label-v { position: absolute; right: 8px; height: var(--cell-size); display: flex; align-items: center; font-weight: bold; font-size: 0.8rem; }
+        .label-h { position: absolute; top: 4px; width: var(--cell-size); text-align: center; font-weight: bold; font-size: 0.7rem; }
+        .label-v { position: absolute; right: 6px; height: var(--cell-size); display: flex; align-items: center; font-weight: bold; font-size: 0.7rem; }
 
-        /* 駒の向き（反転同期） */
+        /* 駒の向き */
         .piece { display: inline-block; transition: transform 0.3s; pointer-events: none; }
         .side-white { transform: rotate(180deg); }
         .side-black { transform: rotate(0deg); }
         .flipped .side-white { transform: rotate(0deg); }
         .flipped .side-black { transform: rotate(180deg); }
 
-        /* 2. 操作パネル */
-        .controls-section { 
-            flex: 1 1 250px; 
-            max-width: 300px; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 10px; 
+        /* 2 & 3. サイドエリア（PCでは左右、モバイルでは下部） */
+        .side-panel { 
+            display: flex; flex-direction: column; gap: 10px; 
+            height: 100%; width: 220px; overflow-y: auto; padding-right: 5px;
         }
-        .info-panel { font-weight: bold; font-size: 1.1rem; padding: 12px; background: #444; color: #fff; border-radius: 4px; text-align: center; }
-        .step-info { background: #fff; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
-        
-        .btn-group { display: flex; flex-direction: column; gap: 8px; }
-        button { padding: 12px; cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
-        button:active { background: #444; transform: translateY(2px); }
+
+        /* モバイルレイアウト（縦積みかつスクロール可能） */
+        @media (max-width: 900px) {
+            .workspace { flex-direction: column; align-items: center; overflow-y: auto; }
+            .side-panel { width: 100%; height: auto; overflow: visible; }
+            body { overflow-y: auto; }
+        }
+
+        .info-panel { font-weight: bold; padding: 10px; background: #444; color: #fff; border-radius: 4px; text-align: center; font-size: 0.9rem; }
+        .btn-group { display: flex; flex-direction: column; gap: 6px; }
+        button { padding: 10px; cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
         .btn-undo { background: #2e7d32; }
         .btn-red { background: #d32f2f; }
 
-        /* 3. 棋譜管理エリア */
-        .kif-section { 
-            flex: 1 1 300px; 
-            max-width: 400px; 
-            background: #fff; 
-            padding: 15px; 
-            border-radius: 8px; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
-            border: 1px solid #ddd; 
-        }
-        textarea { width: 100%; height: 350px; font-family: monospace; font-size: 0.85rem; border: 1px solid #ccc; padding: 10px; box-sizing: border-box; resize: vertical; }
+        textarea { width: 100%; flex-grow: 1; min-height: 150px; font-family: monospace; font-size: 0.75rem; border: 1px solid #ccc; padding: 5px; resize: none; }
 
         /* 持ち駒 */
-        .hand { width: 100%; min-height: 50px; background: #f8f8f8; margin: 5px 0; display: flex; align-items: center; padding: 5px; gap: 5px; border: 2px solid #ddd; position: relative; border-radius: 4px; overflow-x: auto; }
-        .hand::before { content: attr(data-owner); position: absolute; left: 5px; top: -18px; font-weight: bold; color: #444; font-size: 0.75rem; }
-        .hand-piece { font-size: calc(var(--cell-size) * 0.5); cursor: pointer; padding: 4px; border: 1px solid #aaa; background: #fff; position: relative; border-radius: 2px; min-width: calc(var(--cell-size) * 0.7); text-align: center; }
-        .hand-count { position: absolute; top: -8px; right: -8px; background: #d32f2f; color: #fff; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; justify-content: center; align-items: center; transform: rotate(0deg) !important; }
+        .hand { width: 100%; min-height: 45px; background: #f8f8f8; margin: 5px 0; display: flex; align-items: center; padding: 5px; gap: 3px; border: 1.5px solid #ddd; position: relative; border-radius: 4px; }
+        .hand::before { content: attr(data-owner); position: absolute; left: 5px; top: -16px; font-weight: bold; font-size: 0.7rem; }
+        .hand-piece { font-size: calc(var(--cell-size) * 0.55); cursor: pointer; border: 1px solid #aaa; background: #fff; position: relative; padding: 2px; min-width: calc(var(--cell-size) * 0.7); text-align: center; }
+        .hand-count { position: absolute; top: -6px; right: -6px; background: #d32f2f; color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 0.65rem; display: flex; justify-content: center; align-items: center; transform: rotate(0deg) !important; }
 
-        /* ハイライト */
-        .cell.selected { background: rgba(255, 0, 0, 0.25); }
-        .cell.movable { background: rgba(0, 150, 255, 0.35); }
+        .cell.selected { background: rgba(255, 0, 0, 0.2); }
+        .cell.movable { background: rgba(0, 150, 255, 0.3); }
     </style>
 </head>
 <body>
 
 <div class="workspace">
-    <div class="board-section" id="game-main">
-        <div id="hand-top" class="hand" style="margin-top:20px;"></div>
-        <div class="board-container" id="board-container">
-            <div id="labels-h"></div>
-            <div id="labels-v"></div>
-            <div class="board" id="board"></div>
+    <div class="side-panel">
+        <div id="message-area" class="info-panel">先手 (▲)</div>
+        <div style="background:#fff; padding:5px; border:1px solid #ccc; text-align:center; font-size:0.8rem;">
+            手数: <span id="step-count">0</span>
         </div>
-        <div id="hand-bottom" class="hand" style="margin-top:25px;"></div>
-    </div>
-
-    <div class="controls-section">
-        <div id="message-area" class="info-panel">先手 (▲) の番</div>
-        <div class="step-info"><strong>手数:</strong> <span id="step-count">0</span>手目</div>
         <div class="btn-group">
             <button class="btn-undo" onclick="undoMove()">一手取り消し</button>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                <button onclick="goToStep(currentStep - 1)">◀ 戻る</button>
-                <button onclick="goToStep(currentStep + 1)">進む ▶</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <button onclick="goToStep(currentStep - 1)">◀戻る</button>
+                <button onclick="goToStep(currentStep + 1)">進む▶</button>
             </div>
             <button onclick="toggleFlip()">盤面反転</button>
             <button id="auto-btn" onclick="toggleAutoPlay()">自動再生</button>
             <button onclick="document.getElementById('file-input').click()">棋譜読込</button>
             <button onclick="saveKifFile()">棋譜保存</button>
             <button class="btn-red" onclick="resign()">投了</button>
-            <button onclick="location.reload()" style="background:#aaa;">リセット</button>
         </div>
-        <input type="file" id="file-input" style="display:none" accept=".kif" onchange="loadKifFile(event)">
     </div>
 
-    <div class="kif-section">
-        <div style="font-weight:bold; margin-bottom:5px;">棋譜データ</div>
+    <div class="board-section" id="game-main">
+        <div id="hand-top" class="hand" style="margin-top:15px;"></div>
+        <div class="board-container">
+            <div id="labels-h"></div>
+            <div id="labels-v"></div>
+            <div class="board" id="board"></div>
+        </div>
+        <div id="hand-bottom" class="hand" style="margin-top:20px;"></div>
+    </div>
+
+    <div class="side-panel">
+        <div style="font-weight:bold; font-size:0.8rem;">棋譜データ (KIF)</div>
         <textarea id="kif-display" readonly></textarea>
-        <div id="error-display" style="color:red; font-size:0.8rem; margin-top:5px; display:none;"></div>
+        <button onclick="location.reload()" style="background:#aaa; font-size:0.7rem;">リセット</button>
+        <div id="error-display" style="color:red; font-size:0.7rem;"></div>
     </div>
 </div>
+
+<input type="file" id="file-input" style="display:none" accept=".kif" onchange="loadKifFile(event)">
 
 <script>
 const PIECES = {
@@ -191,7 +183,7 @@ function render() {
         el.onclick = () => handleClick(r, c); bEl.appendChild(el);
     }
     renderLabels(); renderHands();
-    document.getElementById('message-area').textContent = gameOver ? "終局" : `${turn === 'black' ? '先手 (▲)' : '後手 (△)'} の番`;
+    document.getElementById('message-area').textContent = gameOver ? "終局" : `${turn === 'black' ? '▲先手' : '△後手'}の番`;
     document.getElementById('step-count').textContent = currentStep;
     updateKifDisplay();
 }
@@ -201,8 +193,8 @@ function renderLabels() {
     hEl.innerHTML = ''; vEl.innerHTML = '';
     const hLabels = isFlipped ? ["１","２","３","４","５","６","７","８","９"] : ["９","８","７","６","５","４","３","２","１"];
     const vLabels = isFlipped ? ["九","八","七","六","五","四","三","二","一"] : ["一","二","三","四","五","六","七","八","九"];
-    hLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-h'; d.style.left = `calc(${i} * var(--cell-size) + 30px)`; d.textContent = l; hEl.appendChild(d); });
-    vLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-v'; d.style.top = `calc(${i} * var(--cell-size) + 30px)`; d.textContent = l; vEl.appendChild(d); });
+    hLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-h'; d.style.left = `calc(${i} * var(--cell-size) + 25px)`; d.textContent = l; hEl.appendChild(d); });
+    vLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-v'; d.style.top = `calc(${i} * var(--cell-size) + 25px)`; d.textContent = l; vEl.appendChild(d); });
 }
 
 function renderHands() {
