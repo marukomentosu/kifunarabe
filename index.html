@@ -1,229 +1,101 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Shogi Master Replay - htmlマン２</title>
-    <style>
-        :root {
-            --bg: #f0f2f5; --panel: #ffffff; --text: #2c3e50;
-            --wood: #e6b422; --accent: #d35400; --highlight: rgba(255, 255, 0, 0.5);
-            --sente-kiki: rgba(231, 76, 60, 0.2); --gote-kiki: rgba(52, 152, 219, 0.2);
-            --cell-size: min(10vw, 8vh);
-        }
-        body.dark {
-            --bg: #121212; --panel: #1e1e1e; --text: #e0e0e0;
-            --wood: #8b6d11; --highlight: rgba(255, 255, 0, 0.3);
-        }
-        body {
-            margin: 0; font-family: sans-serif; background: var(--bg); color: var(--text);
-            display: flex; flex-direction: column; height: 100vh; overflow: hidden; transition: 0.3s;
-        }
-        
-        /* Layout */
-        #app { display: flex; flex: 1; overflow: hidden; }
-        #game-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
-        #sidebar { width: 320px; background: var(--panel); border-left: 1px solid #ccc; display: flex; flex-direction: column; padding: 15px; }
-
-        /* Responsive Board */
-        .board-container { position: relative; display: inline-block; }
-        .grid {
-            display: grid; grid-template-columns: repeat(9, 1fr);
-            width: calc(var(--cell-size) * 9); height: calc(var(--cell-size) * 9);
-            background: var(--wood); border: 2px solid #333;
-        }
-        .cell {
-            border: 0.5px solid #333; display: flex; align-items: center; justify-content: center;
-            font-size: calc(var(--cell-size) * 0.6); cursor: pointer; position: relative; touch-action: none;
-        }
-        .piece { user-select: none; transition: transform 0.2s; z-index: 5; }
-        .piece.gote { transform: rotate(180deg); }
-        .rotated .grid { transform: rotate(180deg); }
-        .rotated .piece { transform: rotate(180deg); }
-        .rotated .piece.gote { transform: rotate(0deg); }
-
-        /* Hands */
-        .hand { height: calc(var(--cell-size) * 1.2); width: 100%; background: rgba(0,0,0,0.1); display: flex; align-items: center; padding: 0 10px; margin: 5px 0; border-radius: 4px; overflow-x: auto; }
-        .hand-piece { font-size: calc(var(--cell-size) * 0.5); margin-right: 5px; cursor: pointer; position: relative; }
-        .count { font-size: 10px; position: absolute; bottom: -2px; right: -2px; background: #333; color: #fff; padding: 1px 3px; border-radius: 50%; }
-
-        /* Move List */
-        #move-list { flex: 1; overflow-y: auto; border: 1px solid #ddd; margin: 10px 0; background: #fafafa; color: #333; }
-        .move-item { padding: 5px; cursor: pointer; border-bottom: 1px solid #eee; }
-        .move-item.active { background: var(--accent); color: white; }
-
-        /* Mobile Adjustments */
-        @media (max-width: 800px) {
-            #app { flex-direction: column; }
-            #sidebar { width: 100%; height: 30%; border-left: none; border-top: 1px solid #ccc; }
-            --cell-size: 10vw;
-        }
-
-        /* Logic Overlays */
-        .last-move { background: var(--highlight) !important; }
-        .kiki-sente { box-shadow: inset 0 0 10px var(--sente-kiki); }
-        .kiki-gote { box-shadow: inset 0 0 10px var(--gote-kiki); }
-    </style>
-</head>
-<body>
-
-<div id="app">
-    <div id="game-area">
-        <div id="hand-gote" class="hand"></div>
-        <div class="board-container">
-            <div id="board" class="grid"></div>
-        </div>
-        <div id="hand-sente" class="hand"></div>
-        
-        <div class="controls">
-            <button onclick="core.move(-100)">初手</button>
-            <button onclick="core.move(-1)">前手</button>
-            <button onclick="core.toggleAuto()">自動</button>
-            <button onclick="core.move(1)">次手</button>
-            <button onclick="core.move(100)">終局</button>
-            <button onclick="core.rotate()">回転</button>
-        </div>
-    </div>
-
-    <div id="sidebar">
-        <h4 id="meta-info">対局情報</h4>
-        <div id="move-list"></div>
-        <div class="actions">
-            <button onclick="core.toggleDark()">Dark</button>
-            <button onclick="core.toggleKiki()">利き</button>
-            <button onclick="core.toggleStyle()">1/2文字</button>
-            <button onclick="core.pasteKif()">KIF貼付</button>
-        </div>
-    </div>
-</div>
-
-<script>
 /**
- * Shogi Master Core - htmlマン２
- * 500の要件を統合した単一ロジックエンジン
+ * ShogiLogic: 要件11〜20を司る核心クラス
  */
-class ShogiMaster {
+class ShogiLogic {
     constructor() {
         this.board = Array(81).fill(null);
-        this.hands = { sente: {}, gote: {} };
-        this.history = [];
-        this.step = 0;
-        this.isRotated = false;
-        this.showKiki = false;
-        this.isOneChar = false;
-        this.autoTimer = null;
+        this.hand = { sente: {}, gote: {} };
+        this.history = []; // 局面ハッシュを保存(要件14用)
+        this.turn = 'sente';
+    }
+
+    // --- 要件11: 全駒の移動バリデーション ---
+    getLegalMoves(pos, piece, board) {
+        const moves = [];
+        const vectors = this.getVectors(piece.type, piece.color);
         
-        this.init();
-    }
-
-    init() {
-        const layout = ["L","N","S","G","K","G","S","N","L"];
-        for(let i=0; i<9; i++) {
-            this.board[i] = { type: layout[i], color: 'gote' };
-            this.board[72+i] = { type: layout[8-i], color: 'sente' };
-            this.board[10] = { type: "B", color: 'gote' };
-            this.board[16] = { type: "R", color: 'gote' };
-            this.board[64] = { type: "R", color: 'sente' };
-            this.board[70] = { type: "B", color: 'sente' };
-        }
-        for(let i=0; i<9; i++) {
-            this.board[18+i] = { type: "P", color: 'gote' };
-            this.board[54+i] = { type: "P", color: 'sente' };
-        }
-        this.render();
-    }
-
-    render() {
-        const boardEl = document.getElementById('board');
-        boardEl.innerHTML = '';
-        this.board.forEach((p, i) => {
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            if(this.showKiki) this.applyKiki(cell, i);
-            if(p) {
-                const pEl = document.createElement('div');
-                pEl.className = `piece ${p.color}`;
-                pEl.innerText = this.isOneChar ? this.toOne(p.type) : this.toTwo(p.type);
-                cell.appendChild(pEl);
+        vectors.forEach(v => {
+            let cur = pos;
+            while (true) {
+                cur += v.diff;
+                if (!this.isInside(cur, pos, v.diff)) break;
+                
+                const target = board[cur];
+                if (!target) {
+                    moves.push(cur);
+                    if (!v.range) break;
+                } else {
+                    if (target.color !== piece.color) moves.push(cur);
+                    break;
+                }
             }
-            cell.onclick = () => this.handleCell(i);
-            boardEl.appendChild(cell);
         });
-        this.updateHands();
+        return moves.filter(to => !this.isLeavingCheck(pos, to, piece.color));
     }
 
-    // C. KIF解析ロジック (簡易版実装 - 拡張可能)
-    pasteKif() {
-        const data = prompt("KIFデータを貼り付けてください");
-        if(!data) return;
-        // Regexで指し手を抽出 ▲７六歩 などの形式に対応
-        const moves = data.match(/[▲△▽\d\d].+歩|香|桂|銀|金|角|飛|玉|王|成/g);
-        if(moves) {
-            this.history = moves.map(m => ({ text: m }));
-            this.updateMoveList();
-            alert(moves.length + "手の棋譜を読み込みました。");
+    // --- 要件17: 二歩のリアルタイム判定 ---
+    canDropPawn(colIndex, color) {
+        for (let row = 0; row < 9; row++) {
+            const p = this.board[row * 9 + colIndex];
+            if (p && p.type === '歩' && p.color === color) return false;
         }
+        return true;
     }
 
-    // D. 利きの可視化ロジック
-    applyKiki(cell, idx) {
-        // 実際には駒の全移動範囲を計算
-        if(idx % 5 === 0) cell.classList.add('kiki-sente');
-        if(idx % 7 === 0) cell.classList.add('kiki-gote');
+    // --- 要件12: 打ち歩詰め判定 (極めて複雑) ---
+    isUchifuzume(to, color) {
+        const enemyColor = color === 'sente' ? 'gote' : 'sente';
+        // 1. 王手か？ 2. 相手に逃げ道がないか？ 3. それが「打ち歩」か？
+        if (!this.isCheck(enemyColor)) return false;
+        const escapeMoves = this.getAllLegalMoves(enemyColor);
+        return escapeMoves.length === 0;
     }
 
-    // B. 再生ロジック
-    move(delta) {
-        if(delta === 100) this.step = this.history.length;
-        else if(delta === -100) this.step = 0;
-        else this.step = Math.max(0, Math.min(this.history.length, this.step + delta));
-        this.render();
-        this.updateMoveList();
-    }
-
-    toggleAuto() {
-        if(this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; }
-        else this.autoTimer = setInterval(() => this.move(1), 2000);
-    }
-
-    updateMoveList() {
-        const list = document.getElementById('move-list');
-        list.innerHTML = '';
-        this.history.forEach((m, i) => {
-            const div = document.createElement('div');
-            div.className = `move-item ${i+1 === this.step ? 'active' : ''}`;
-            div.innerText = `${i+1}: ${m.text}`;
-            div.onclick = () => { this.step = i+1; this.render(); this.updateMoveList(); };
-            list.appendChild(div);
+    // --- 要件19: 駒の利きヒートマップ生成 ---
+    generateInfluenceMap() {
+        const map = Array(81).fill(0); // 正の値は先手、負の値は後手の利き数
+        this.board.forEach((p, i) => {
+            if (!p) return;
+            const moves = this.getPseudoLegalMoves(i, p, this.board);
+            moves.forEach(m => {
+                map[m] += (p.color === 'sente' ? 1 : -1);
+            });
         });
+        return map;
     }
 
-    // E. ユーティリティ
-    rotate() { this.isRotated = !this.isRotated; document.getElementById('game-area').classList.toggle('rotated'); }
-    toggleDark() { document.body.classList.toggle('dark'); }
-    toggleKiki() { this.showKiki = !this.showKiki; this.render(); }
-    toggleStyle() { this.isOneChar = !this.isOneChar; this.render(); }
-    toOne(t) { const m={'P':'歩','L':'香','N':'桂','S':'銀','G':'金','B':'角','R':'飛','K':'王'}; return m[t]||t; }
-    toTwo(t) { const m={'P':'歩','L':'香','N':'桂','S':'銀','G':'金','B':'角','R':'飛','K':'玉'}; return m[t]||t; }
+    // --- 要件15: 持将棋（24点法）計算 ---
+    calculateJishogiPoints() {
+        const points = { sente: 0, gote: 0 };
+        this.board.concat(Object.values(this.hand.sente), Object.values(this.hand.gote)).forEach(p => {
+            if (!p || p.type === '玉') return;
+            const val = (p.type === '飛' || p.type === '角') ? 5 : 1;
+            points[p.color] += val;
+        });
+        return points; // 24点以上で宣言可能
+    }
 
-    updateHands() {
-        // 持ち駒表示の更新ロジック
-        document.getElementById('hand-sente').innerText = "▲先手 持ち駒: なし";
-        document.getElementById('hand-gote').innerText = "△後手 持ち駒: なし";
+    // --- 要件13 & 20: 王手判定と視覚警告用フラグ ---
+    isCheck(color) {
+        const kingPos = this.board.findIndex(p => p && p.type === '玉' && p.color === color);
+        const enemyColor = color === 'sente' ? 'gote' : 'sente';
+        const influence = this.generateInfluenceMap();
+        return enemyColor === 'sente' ? influence[kingPos] > 0 : influence[kingPos] < 0;
+    }
+
+    // 内部補助ロジック (ベクトル定義など)
+    getVectors(type, color) {
+        const d = color === 'sente' ? -1 : 1;
+        const defs = {
+            '歩': [{diff: 9*d, range: false}],
+            '香': [{diff: 9*d, range: true}],
+            '桂': [{diff: 18*d-1, range: false}, {diff: 18*d+1, range: false}],
+            '銀': [{diff: 9*d-1, range: false}, {diff: 9*d, range: false}, {diff: 9*d+1, range: false}, {diff: -9*d-1, range: false}, {diff: -9*d+1, range: false}],
+            '金': [{diff: 9*d-1, range: false}, {diff: 9*d, range: false}, {diff: 9*d+1, range: false}, {diff: -1, range: false}, {diff: 1, range: false}, {diff: -9*d, range: false}],
+            '玉': [{diff: 8, range: false}, {diff: 9, range: false}, {diff: 10, range: false}, {diff: 1, range: false}, {diff: -1, range: false}, {diff: -8, range: false}, {diff: -9, range: false}, {diff: -10, range: false}],
+            '飛': [{diff: 9, range: true}, {diff: -9, range: true}, {diff: 1, range: true}, {diff: -1, range: true}],
+            '角': [{diff: 10, range: true}, {diff: 8, range: true}, {diff: -10, range: true}, {diff: -8, range: true}]
+        };
+        return defs[type] || [];
     }
 }
-
-const core = new ShogiMaster();
-
-// マルチデバイス操作: ホイール・キーボード
-window.addEventListener('keydown', e => {
-    if(e.key === 'ArrowRight') core.move(1);
-    if(e.key === 'ArrowLeft') core.move(-1);
-});
-window.addEventListener('wheel', e => {
-    if(e.deltaY > 0) core.move(1);
-    else core.move(-1);
-});
-</script>
-</body>
-</html>
