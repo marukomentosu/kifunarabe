@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>将棋システム - htmlマン２ Professional</title>
+    <style>
+        :root { 
+            --board-bg: #e6b450; 
+            --cell-size: 55px; 
+            --border: #333; 
+        }
+        /* スマホ向けのサイズ調整 */
+        @media (max-width: 600px) { :root { --cell-size: 10vw; } }
+
+        body { font-family: "MS Mincho", serif; background: #f0f0f0; margin: 0; padding: 10px; display: flex; justify-content: center; }
+        
+        /* ワークスペース：PCでは横並び、スマホでは縦並び */
+        .workspace { 
+            display: flex; 
+            gap: 20px; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        /* 1. 盤面エリア */
+        .board-section { flex: 0 1 auto; display: flex; flex-direction: column; align-items: center; }
+        .board-container { 
+            position: relative; 
+            padding: 30px 40px 40px 30px; 
+            background: #d4a74a; 
+            border: 4px solid #b38d39; 
+            border-radius: 4px; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2); 
+            user-select: none;
+        }
+        .board { 
+            display: grid; 
+            grid-template-columns: repeat(9, var(--cell-size)); 
+            grid-template-rows: repeat(9, var(--cell-size)); 
+            background: var(--board-bg); 
+            border: 2px solid var(--border); 
+        }
+        .cell { 
+            width: var(--cell-size); height: var(--cell-size); 
+            border: 0.5px solid var(--border); 
+            display: flex; justify-content: center; align-items: center; 
+            font-size: calc(var(--cell-size) * 0.6); cursor: pointer; position: relative; 
+        }
+
+        /* 座標ラベル */
+        .label-h { position: absolute; top: 5px; width: var(--cell-size); text-align: center; font-weight: bold; font-size: 0.8rem; }
+        .label-v { position: absolute; right: 8px; height: var(--cell-size); display: flex; align-items: center; font-weight: bold; font-size: 0.8rem; }
+
+        /* 駒の向き（反転同期） */
+        .piece { display: inline-block; transition: transform 0.3s; pointer-events: none; }
+        .side-white { transform: rotate(180deg); }
+        .side-black { transform: rotate(0deg); }
+        .flipped .side-white { transform: rotate(0deg); }
+        .flipped .side-black { transform: rotate(180deg); }
+
+        /* 2. 操作パネル */
+        .controls-section { 
+            flex: 1 1 250px; 
+            max-width: 300px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+        }
+        .info-panel { font-weight: bold; font-size: 1.1rem; padding: 12px; background: #444; color: #fff; border-radius: 4px; text-align: center; }
+        .step-info { background: #fff; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+        
+        .btn-group { display: flex; flex-direction: column; gap: 8px; }
+        button { padding: 12px; cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 0.9rem; }
+        button:active { background: #444; transform: translateY(2px); }
+        .btn-undo { background: #2e7d32; }
+        .btn-red { background: #d32f2f; }
+
+        /* 3. 棋譜管理エリア */
+        .kif-section { 
+            flex: 1 1 300px; 
+            max-width: 400px; 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+            border: 1px solid #ddd; 
+        }
+        textarea { width: 100%; height: 350px; font-family: monospace; font-size: 0.85rem; border: 1px solid #ccc; padding: 10px; box-sizing: border-box; resize: vertical; }
+
+        /* 持ち駒 */
+        .hand { width: 100%; min-height: 50px; background: #f8f8f8; margin: 5px 0; display: flex; align-items: center; padding: 5px; gap: 5px; border: 2px solid #ddd; position: relative; border-radius: 4px; overflow-x: auto; }
+        .hand::before { content: attr(data-owner); position: absolute; left: 5px; top: -18px; font-weight: bold; color: #444; font-size: 0.75rem; }
+        .hand-piece { font-size: calc(var(--cell-size) * 0.5); cursor: pointer; padding: 4px; border: 1px solid #aaa; background: #fff; position: relative; border-radius: 2px; min-width: calc(var(--cell-size) * 0.7); text-align: center; }
+        .hand-count { position: absolute; top: -8px; right: -8px; background: #d32f2f; color: #fff; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; justify-content: center; align-items: center; transform: rotate(0deg) !important; }
+
+        /* ハイライト */
+        .cell.selected { background: rgba(255, 0, 0, 0.25); }
+        .cell.movable { background: rgba(0, 150, 255, 0.35); }
+    </style>
+</head>
+<body>
+
+<div class="workspace">
+    <div class="board-section" id="game-main">
+        <div id="hand-top" class="hand" style="margin-top:20px;"></div>
+        <div class="board-container" id="board-container">
+            <div id="labels-h"></div>
+            <div id="labels-v"></div>
+            <div class="board" id="board"></div>
+        </div>
+        <div id="hand-bottom" class="hand" style="margin-top:25px;"></div>
+    </div>
+
+    <div class="controls-section">
+        <div id="message-area" class="info-panel">先手 (▲) の番</div>
+        <div class="step-info"><strong>手数:</strong> <span id="step-count">0</span>手目</div>
+        <div class="btn-group">
+            <button class="btn-undo" onclick="undoMove()">一手取り消し</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button onclick="goToStep(currentStep - 1)">◀ 戻る</button>
+                <button onclick="goToStep(currentStep + 1)">進む ▶</button>
+            </div>
+            <button onclick="toggleFlip()">盤面反転</button>
+            <button id="auto-btn" onclick="toggleAutoPlay()">自動再生</button>
+            <button onclick="document.getElementById('file-input').click()">棋譜読込</button>
+            <button onclick="saveKifFile()">棋譜保存</button>
+            <button class="btn-red" onclick="resign()">投了</button>
+            <button onclick="location.reload()" style="background:#aaa;">リセット</button>
+        </div>
+        <input type="file" id="file-input" style="display:none" accept=".kif" onchange="loadKifFile(event)">
+    </div>
+
+    <div class="kif-section">
+        <div style="font-weight:bold; margin-bottom:5px;">棋譜データ</div>
+        <textarea id="kif-display" readonly></textarea>
+        <div id="error-display" style="color:red; font-size:0.8rem; margin-top:5px; display:none;"></div>
+    </div>
+</div>
+
+<script>
+const PIECES = {
+    FU: { n: '歩', p: 'と', move: [[-1, 0]], slide: [] },
+    KY: { n: '香', p: '杏', move: [], slide: [[-1, 0]] },
+    KE: { n: '桂', p: '圭', move: [[-2, -1], [-2, 1]], slide: [] },
+    GI: { n: '銀', p: '全', move: [[-1,-1], [-1,0], [-1,1], [1,-1], [1,1]], slide: [] },
+    KI: { n: '金', move: [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,0]], slide: [] },
+    KA: { n: '角', p: '馬', move: [], slide: [[-1,-1], [-1,1], [1,-1], [1,1]] },
+    HI: { n: '飛', p: '龍', move: [], slide: [[-1,0], [1,0], [0,-1], [0,1]] },
+    OU: { n: '玉', move: [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,-1], [1,0], [1,1]], slide: [] },
+    UM: { move: [[-1,0], [1,0], [0,-1], [0,1]], slide: [[-1,-1], [-1,1], [1,-1], [1,1]] },
+    RY: { move: [[-1,-1], [-1,1], [1,-1], [1,1]], slide: [[-1,0], [1,0], [0,-1], [0,1]] }
+};
+
+let board = [], hands = {black:{}, white:{}}, turn = 'black', history = [], currentStep = 0;
+let selected = null, movableSquares = [], isFlipped = false, autoPlayTimer = null, gameOver = false;
+
+function init() {
+    board = Array(9).fill(null).map(() => Array(9).fill(null));
+    const layout = ['KY','KE','GI','KI','OU','KI','GI','KE','KY'];
+    for(let i=0; i<9; i++) {
+        board[0][i] = { type: layout[i], side: 'white', prom: false };
+        board[8][i] = { type: layout[i], side: 'black', prom: false };
+        board[2][i] = { type: 'FU', side: 'white', prom: false };
+        board[6][i] = { type: 'FU', side: 'black', prom: false };
+    }
+    board[1][1] = { type: 'HI', side: 'white', prom: false }; board[1][7] = { type: 'KA', side: 'white', prom: false };
+    board[7][1] = { type: 'KA', side: 'black', prom: false }; board[7][7] = { type: 'HI', side: 'black', prom: false };
+    Object.keys(PIECES).forEach(p => { hands.black[p] = 0; hands.white[p] = 0; });
+    history = []; saveHistory("開始局面"); render();
+}
+
+function undoMove() { if (currentStep > 0) goToStep(currentStep - 1); }
+
+function render() {
+    const bEl = document.getElementById('board');
+    const mainWrap = document.getElementById('game-main');
+    bEl.innerHTML = ''; mainWrap.className = `board-section ${isFlipped ? 'flipped' : ''}`;
+    for(let i=0; i<81; i++) {
+        const r = isFlipped ? Math.floor((80-i)/9) : Math.floor(i/9);
+        const c = isFlipped ? (80-i)%9 : i%9;
+        const p = board[r][c]; const el = document.createElement('div'); el.className = 'cell';
+        if (selected && selected.r === r && selected.c === c) el.classList.add('selected');
+        if (movableSquares.some(m => m[0] === r && m[1] === c)) el.classList.add('movable');
+        if (p) {
+            const span = document.createElement('span'); span.className = `piece side-${p.side}`;
+            span.textContent = p.prom ? (PIECES[p.type].p || p.type) : PIECES[p.type].n; el.appendChild(span);
+        }
+        el.onclick = () => handleClick(r, c); bEl.appendChild(el);
+    }
+    renderLabels(); renderHands();
+    document.getElementById('message-area').textContent = gameOver ? "終局" : `${turn === 'black' ? '先手 (▲)' : '後手 (△)'} の番`;
+    document.getElementById('step-count').textContent = currentStep;
+    updateKifDisplay();
+}
+
+function renderLabels() {
+    const hEl = document.getElementById('labels-h'), vEl = document.getElementById('labels-v');
+    hEl.innerHTML = ''; vEl.innerHTML = '';
+    const hLabels = isFlipped ? ["１","２","３","４","５","６","７","８","９"] : ["９","８","７","６","５","４","３","２","１"];
+    const vLabels = isFlipped ? ["九","八","七","六","五","四","三","二","一"] : ["一","二","三","四","五","六","七","八","九"];
+    hLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-h'; d.style.left = `calc(${i} * var(--cell-size) + 30px)`; d.textContent = l; hEl.appendChild(d); });
+    vLabels.forEach((l, i) => { const d = document.createElement('div'); d.className = 'label-v'; d.style.top = `calc(${i} * var(--cell-size) + 30px)`; d.textContent = l; vEl.appendChild(d); });
+}
+
+function renderHands() {
+    const bottomSide = isFlipped ? 'white' : 'black', topSide = isFlipped ? 'black' : 'white';
+    [['bottom', bottomSide], ['top', topSide]].forEach(([pos, side]) => {
+        const el = document.getElementById(`hand-${pos}`);
+        el.innerHTML = ''; el.setAttribute('data-owner', side === 'black' ? '▲先手 持ち駒' : '△後手 持ち駒');
+        Object.entries(hands[side]).forEach(([type, count]) => {
+            if (count > 0) {
+                const pEl = document.createElement('div'); pEl.className = `hand-piece piece side-${side}`;
+                pEl.innerHTML = `${PIECES[type].n}<div class="hand-count">${count}</div>`;
+                pEl.onclick = (e) => { e.stopPropagation(); selectHand(side, type); }; el.appendChild(pEl);
+            }
+        });
+    });
+}
+
+function handleClick(r, c) {
+    if(gameOver) return;
+    if (selected) {
+        if (movableSquares.some(m => m[0] === r && m[1] === c)) {
+            if (selected.type === 'board') executeMove(selected.r, selected.c, r, c); else executeDrop(selected.pType, r, c);
+            selected = null; movableSquares = []; render();
+        } else { selected = null; movableSquares = []; render(); }
+    } else {
+        const p = board[r][c]; if (p && p.side === turn) { selected = { type: 'board', r, c }; movableSquares = getLegalMoves(r, c); render(); }
+    }
+}
+
+function executeMove(fr, fc, tr, tc) {
+    const p = board[fr][fc], target = board[tr][tc]; if (target) hands[turn][target.type]++;
+    board[tr][tc] = p; board[fr][fc] = null;
+    const mustPromote = (p.type === 'FU' || p.type === 'KY') && (turn === 'black' ? tr === 0 : tr === 8) || (p.type === 'KE' && (turn === 'black' ? tr <= 1 : tr >= 7));
+    if (!p.prom && PIECES[p.type].p && (p.side === 'black' ? (tr <= 2 || fr <= 2) : (tr >= 6 || fr >= 6))) { if (mustPromote || confirm("成りますか？")) p.prom = true; }
+    saveHistory(`${"１２３４５６７８９"[8-tc]}${["一","二","三","四","五","六","七","八","九"][tr]}${PIECES[p.type].n}${p.prom?'成':''}(${9-fc}${fr+1})`);
+    turn = (turn === 'black' ? 'white' : 'black');
+}
+
+function selectHand(side, type) {
+    if (gameOver || turn !== side) return;
+    selected = { type: 'hand', pType: type, side }; movableSquares = [];
+    for(let r=0; r<9; r++) for(let c=0; c<9; c++) {
+        if (!board[r][c]) {
+            if (type === 'FU') { let nifu = false; for(let i=0; i<9; i++) if(board[i][c] && board[i][c].type==='FU' && board[i][c].side===turn && !board[i][c].prom) nifu=true; if(nifu) continue; }
+            if ((type === 'FU' || type === 'KY') && (turn === 'black' ? r === 0 : r === 8)) continue;
+            if (type === 'KE' && (turn === 'black' ? r <= 1 : r >= 7)) continue;
+            if(!isCheck(turn, board)) movableSquares.push([r, c]);
+        }
+    }
+    render();
+}
+
+function executeDrop(type, r, c) {
+    board[r][c] = { type, side: turn, prom: false }; hands[turn][type]--;
+    saveHistory(`${"１２３４５６７８９"[8-c]}${["一","二","三","四","五","六","七","八","九"][r]}${PIECES[type].n}打`);
+    turn = (turn === 'black' ? 'white' : 'black');
+}
+
+function isCheck(side, b) {
+    let kp = null; for(let r=0; r<9; r++) for(let c=0; c<9; c++) if(b[r][c] && b[r][c].type === 'OU' && b[r][c].side === side) kp = [r, c];
+    if(!kp) return false;
+    for(let r=0; r<9; r++) for(let c=0; c<9; c++) { const p = b[r][c]; if(p && p.side !== side && getPotentialMoves(r, c, b).some(m => m[0] === kp[0] && m[1] === kp[1])) return true; }
+    return false;
+}
+
+function getLegalMoves(r, c) {
+    return getPotentialMoves(r, c, board).filter(([tr, tc]) => {
+        const p = board[r][c], target = board[tr][tc]; board[tr][tc] = p; board[r][c] = null;
+        const check = isCheck(p.side, board); board[r][c] = p; board[tr][tc] = target; return !check;
+    });
+}
+
+function getPotentialMoves(r, c, b) {
+    const p = b[r][c]; if (!p) return []; let moves = []; const sf = (p.side === 'black' ? 1 : -1);
+    let mDef = (p.prom && !['KA', 'HI'].includes(p.type)) ? PIECES['KI'] : (p.prom ? PIECES[p.type === 'KA' ? 'UM' : 'RY'] : PIECES[p.type]);
+    mDef.move.forEach(([dr, dc]) => { const nr = r + dr * sf, nc = c + dc * sf; if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9 && (!b[nr][nc] || b[nr][nc].side !== p.side)) moves.push([nr, nc]); });
+    mDef.slide.forEach(([dr, dc]) => { let nr = r + dr * sf, nc = c + dc * sf; while (nr >= 0 && nr < 9 && nc >= 0 && nc < 9) { if (!b[nr][nc]) { moves.push([nr, nc]); } else { if (b[nr][nc].side !== p.side) moves.push([nr, nc]); break; } nr += dr * sf; nc += dc * sf; } });
+    return moves;
+}
+
+function saveHistory(kifText) {
+    if (currentStep < history.length - 1) history = history.slice(0, currentStep + 1);
+    history.push({ board: JSON.parse(JSON.stringify(board)), hands: JSON.parse(JSON.stringify(hands)), turn, kif: kifText, gameOver });
+    currentStep = history.length - 1;
+}
+
+function goToStep(step) {
+    if (step < 0 || step >= history.length) return;
+    currentStep = step; const h = history[currentStep];
+    board = JSON.parse(JSON.stringify(h.board)); hands = JSON.parse(JSON.stringify(h.hands));
+    turn = h.turn; gameOver = h.gameOver; selected = null; movableSquares = []; render();
+}
+
+function toggleFlip() { isFlipped = !isFlipped; render(); }
+function toggleAutoPlay() {
+    if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; document.getElementById('auto-btn').style.background = "#555"; }
+    else { document.getElementById('auto-btn').style.background = "#d32f2f"; autoPlayTimer = setInterval(() => { if(currentStep < history.length - 1) goToStep(currentStep + 1); else toggleAutoPlay(); }, 1000); }
+}
+function saveKifFile() { const blob = new Blob([document.getElementById('kif-display').value], {type: 'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'record.kif'; a.click(); }
+
+async function loadKifFile(event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const lines = e.target.result.split(/\r?\n/); init();
+        for (let line of lines) {
+            const match = line.match(/^\d+\s+([１-９][一-九][^ (]+)(\(([\d]+)\)|打)/);
+            if (match) simulateMoveFromKif(match[1], match[3]);
+        }
+        render();
+    };
+    reader.readAsText(file);
+}
+
+function simulateMoveFromKif(moveText, fromCoord) {
+    const toC = 9 - "１２３４５６７８９".indexOf(moveText[0]); const toR = "一二三四五六七八九".indexOf(moveText[1]);
+    const pName = moveText.substring(2).replace('成', '');
+    if (!fromCoord) {
+        const type = Object.keys(PIECES).find(k => PIECES[k].n === pName);
+        board[toR][toC] = { type, side: turn, prom: false }; hands[turn][type]--;
+    } else {
+        const fc = 9 - parseInt(fromCoord[0]), fr = parseInt(fromCoord[1]) - 1;
+        const p = board[fr][fc]; if (board[toR][toC]) hands[turn][board[toR][toC].type]++;
+        board[toR][toC] = p; board[fr][fc] = null; if (moveText.includes('成')) p.prom = true;
+    }
+    turn = (turn === 'black' ? 'white' : 'black'); saveHistory(moveText + (fromCoord ? `(${fromCoord})` : "打")); return {success: true};
+}
+
+function updateKifDisplay() { 
+    let text = "# KIF version=2.0\n手合割：平手\n"; 
+    history.forEach((h, i) => { if(i > 0) text += `${i.toString().padStart(4)} ${h.kif}\n`; }); 
+    document.getElementById('kif-display').value = text; 
+}
+function resign() { if(!gameOver && confirm("投了しますか？")) { gameOver = true; saveHistory(`${turn==='black'?'先手':'後手'}の投了`); render(); } }
+
+init();
+</script>
+</body>
+</html>
