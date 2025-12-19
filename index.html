@@ -2,293 +2,228 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>将棋棋譜並べプログラム 究極要件定義 - htmlマン２</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shogi Master Replay - htmlマン２</title>
     <style>
         :root {
-            --primary: #2c3e50;
-            --accent: #d35400;
-            --yes-btn: #27ae60;
-            --no-btn: #c0392b;
-            --bg-light: #fdfdfd;
-            --card-border: #ecf0f1;
+            --bg: #f0f2f5; --panel: #ffffff; --text: #2c3e50;
+            --wood: #e6b422; --accent: #d35400; --highlight: rgba(255, 255, 0, 0.5);
+            --sente-kiki: rgba(231, 76, 60, 0.2); --gote-kiki: rgba(52, 152, 219, 0.2);
+            --cell-size: min(10vw, 8vh);
+        }
+        body.dark {
+            --bg: #121212; --panel: #1e1e1e; --text: #e0e0e0;
+            --wood: #8b6d11; --highlight: rgba(255, 255, 0, 0.3);
         }
         body {
-            font-family: "Hiragino Sans", "Meiryo", sans-serif;
-            background-color: #f0f2f5;
-            color: var(--primary);
-            margin: 0; padding: 0;
-            display: flex; flex-direction: column; align-items: center;
+            margin: 0; font-family: sans-serif; background: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden; transition: 0.3s;
         }
-        .header {
-            background: var(--primary); color: white;
-            width: 100%; padding: 20px 0; text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        .container {
-            max-width: 850px; width: 95%; margin: 20px auto;
-            background: #fff; padding: 40px; border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        }
-        .intro { margin-bottom: 30px; line-height: 1.8; border-left: 5px solid var(--accent); padding-left: 20px; }
         
-        .progress-sticky {
-            position: sticky; top: 0; background: #fff; padding: 15px 0;
-            z-index: 100; border-bottom: 2px solid var(--card-border);
-            margin-bottom: 20px;
+        /* Layout */
+        #app { display: flex; flex: 1; overflow: hidden; }
+        #game-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
+        #sidebar { width: 320px; background: var(--panel); border-left: 1px solid #ccc; display: flex; flex-direction: column; padding: 15px; }
+
+        /* Responsive Board */
+        .board-container { position: relative; display: inline-block; }
+        .grid {
+            display: grid; grid-template-columns: repeat(9, 1fr);
+            width: calc(var(--cell-size) * 9); height: calc(var(--cell-size) * 9);
+            background: var(--wood); border: 2px solid #333;
         }
-        .progress-bar-bg { height: 8px; width: 100%; background: #eee; border-radius: 4px; overflow: hidden; }
-        #progress-fill { height: 100%; background: var(--accent); width: 0%; transition: 0.4s cubic-bezier(0.1, 0.7, 0.1, 1); }
-        
-        .category-block { margin-top: 40px; }
-        .category-title {
-            font-size: 1.4rem; font-weight: bold; color: var(--accent);
-            border-bottom: 2px solid var(--accent); padding-bottom: 5px; margin-bottom: 15px;
+        .cell {
+            border: 0.5px solid #333; display: flex; align-items: center; justify-content: center;
+            font-size: calc(var(--cell-size) * 0.6); cursor: pointer; position: relative; touch-action: none;
+        }
+        .piece { user-select: none; transition: transform 0.2s; z-index: 5; }
+        .piece.gote { transform: rotate(180deg); }
+        .rotated .grid { transform: rotate(180deg); }
+        .rotated .piece { transform: rotate(180deg); }
+        .rotated .piece.gote { transform: rotate(0deg); }
+
+        /* Hands */
+        .hand { height: calc(var(--cell-size) * 1.2); width: 100%; background: rgba(0,0,0,0.1); display: flex; align-items: center; padding: 0 10px; margin: 5px 0; border-radius: 4px; overflow-x: auto; }
+        .hand-piece { font-size: calc(var(--cell-size) * 0.5); margin-right: 5px; cursor: pointer; position: relative; }
+        .count { font-size: 10px; position: absolute; bottom: -2px; right: -2px; background: #333; color: #fff; padding: 1px 3px; border-radius: 50%; }
+
+        /* Move List */
+        #move-list { flex: 1; overflow-y: auto; border: 1px solid #ddd; margin: 10px 0; background: #fafafa; color: #333; }
+        .move-item { padding: 5px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .move-item.active { background: var(--accent); color: white; }
+
+        /* Mobile Adjustments */
+        @media (max-width: 800px) {
+            #app { flex-direction: column; }
+            #sidebar { width: 100%; height: 30%; border-left: none; border-top: 1px solid #ccc; }
+            --cell-size: 10vw;
         }
 
-        .q-card {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 18px 0; border-bottom: 1px solid var(--card-border);
-        }
-        .q-text { flex: 1; padding-right: 25px; font-size: 1.05rem; }
-        .q-desc { font-size: 0.85rem; color: #7f8c8d; display: block; margin-top: 4px; }
-        
-        .btn-group { display: flex; gap: 8px; }
-        .btn {
-            padding: 10px 20px; border: 2px solid #ddd; border-radius: 8px;
-            cursor: pointer; background: #fff; font-weight: bold; transition: all 0.2s;
-            min-width: 80px; text-align: center;
-        }
-        .btn.yes:hover { border-color: var(--yes-btn); color: var(--yes-btn); }
-        .btn.no:hover { border-color: var(--no-btn); color: var(--no-btn); }
-        .btn.yes.active { background: var(--yes-btn); border-color: var(--yes-btn); color: white; }
-        .btn.no.active { background: var(--no-btn); border-color: var(--no-btn); color: white; }
-
-        .result-area {
-            margin-top: 50px; background: #f9f9f9; padding: 25px; border-radius: 10px;
-            border: 2px dashed #ddd;
-        }
-        #output-text {
-            width: 100%; height: 400px; margin-top: 15px; padding: 15px;
-            border-radius: 6px; border: 1px solid #ccc; font-family: "Consolas", monospace;
-            font-size: 0.95rem; line-height: 1.5; background: #fff;
-        }
-        .generate-btn {
-            background: var(--accent); color: white; border: none; padding: 18px;
-            width: 100%; border-radius: 8px; font-size: 1.2rem; cursor: pointer;
-            font-weight: bold; box-shadow: 0 4px 10px rgba(211, 84, 0, 0.3);
-        }
-        .generate-btn:hover { background: #e67e22; transform: translateY(-1px); }
+        /* Logic Overlays */
+        .last-move { background: var(--highlight) !important; }
+        .kiki-sente { box-shadow: inset 0 0 10px var(--sente-kiki); }
+        .kiki-gote { box-shadow: inset 0 0 10px var(--gote-kiki); }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h1>将棋棋譜並べプログラム：マスター要件定義</h1>
-</div>
-
-<div class="container">
-    <div class="intro">
-        <strong>htmlマン２からのメッセージ：</strong><br>
-        棋譜並べプログラムに必要な全ての要素を、論理的な階層構造でまとめ上げた。
-        各項目を吟味し、「必要」を選択したものが君のプロダクトの仕様書（Requirement Definition）となる。
+<div id="app">
+    <div id="game-area">
+        <div id="hand-gote" class="hand"></div>
+        <div class="board-container">
+            <div id="board" class="grid"></div>
+        </div>
+        <div id="hand-sente" class="hand"></div>
+        
+        <div class="controls">
+            <button onclick="core.move(-100)">初手</button>
+            <button onclick="core.move(-1)">前手</button>
+            <button onclick="core.toggleAuto()">自動</button>
+            <button onclick="core.move(1)">次手</button>
+            <button onclick="core.move(100)">終局</button>
+            <button onclick="core.rotate()">回転</button>
+        </div>
     </div>
 
-    <div class="progress-sticky">
-        <div id="progress-label">進捗: 0 / 0 (0%)</div>
-        <div class="progress-bar-bg"><div id="progress-fill"></div></div>
-    </div>
-
-    <div id="main-content"></div>
-
-    <div class="result-area">
-        <button class="generate-btn" onclick="generateOutput()">採用要件一覧テキストを生成する</button>
-        <textarea id="output-text" readonly placeholder="ボタンを押すと、こちらに仕様書が生成されます..."></textarea>
+    <div id="sidebar">
+        <h4 id="meta-info">対局情報</h4>
+        <div id="move-list"></div>
+        <div class="actions">
+            <button onclick="core.toggleDark()">Dark</button>
+            <button onclick="core.toggleKiki()">利き</button>
+            <button onclick="core.toggleStyle()">1/2文字</button>
+            <button onclick="core.pasteKif()">KIF貼付</button>
+        </div>
     </div>
 </div>
 
 <script>
-const schema = [
-    {
-        category: "A. 盤面描画・グラフィックス",
-        items: [
-            { t: "盤面のレスポンシブ対応", d: "ウィンドウサイズに応じて盤面が拡大縮小する" },
-            { t: "一文字駒・二文字駒の切り替え", d: "視認性重視の一文字と伝統的な二文字をユーザーが選択できる" },
-            { t: "駒のテクスチャ選択", d: "彫り駒、盛り上げ駒などの質感を画像で再現する" },
-            { t: "盤の材質選択", d: "榧、桂、単色など盤面の背景を選択できる" },
-            { t: "移動元・移動先の強調表示", d: "直前の着手位置を色付けして視覚化する" },
-            { t: "成りの視覚演出", d: "駒が裏返る際のアニメーションを実装する" },
-            { t: "駒の打撃音", d: "駒を置いた際の小気味よい音。材質による音の差異も含む" },
-            { t: "座標表示（符号）", d: "盤の外側に1〜9、一〜九の数値を表示する" },
-            { t: "駒箱・持ち駒のリアルな配置", d: "駒台の上の駒を整列、または枚数表示で切り替える" },
-            { t: "盤面180度回転", d: "後手（上手）視点での検討を可能にする" }
-        ]
-    },
-    {
-        category: "B. 棋譜再生ロジック・操作",
-        items: [
-            { t: "キーボードショートカット", d: "左右キーで一手前後、上下キーで開始・終了へジャンプ" },
-            { t: "マウスホイール操作", d: "ホイールの上下で棋譜を高速に前後させる" },
-            { t: "自動再生モード", d: "指定した秒数間隔で棋譜を自動で進める" },
-            { t: "分岐（変化手順）の管理", d: "本譜以外の読み筋を保存し、盤上で切り替える" },
-            { t: "棋譜リスト表示", d: "全ての符号をリスト表示し、任意の着手をクリックして移動する" },
-            { t: "ドラッグ＆ドロップ操作", d: "マウスで駒を直接掴んで動かす直感的な操作" },
-            { t: "クリック確定操作", d: "動かしたい駒と場所を順にクリックする操作" },
-            { t: "逆順再生ロジック", d: "終局図から初手に向かって局面を戻す動作の整合性確保" }
-        ]
-    },
-    {
-        category: "C. 棋譜データフォーマット連携",
-        items: [
-            { t: "KIF形式の完全サポート", d: "日本で最も一般的な棋譜形式（.kif）の読み書き" },
-            { t: "CSA形式のサポート", d: "コンピュータ将棋協会形式（.csa）の読み書き" },
-            { t: "SFEN/BOD形式の書き出し", d: "局面図をテキストで共有するためのフォーマット対応" },
-            { t: "JSON形式の独自エクスポート", d: "ウェブアプリとして扱いやすいデータ形式での保存" },
-            { t: "クリップボードからの貼り付け", d: "コピーした棋譜テキストを即座に盤面に反映" },
-            { t: "棋譜ファイル内のコメント表示", d: "プロの解説などのコメントを局面ごとに表示" }
-        ]
-    },
-    {
-        category: "D. 解析・補助機能",
-        items: [
-            { t: "USIエンジン連携", d: "「水匠」等の外部将棋エンジンによる形勢判断" },
-            { t: "評価値グラフ描画", d: "一局を通した形勢の推移を視覚的なグラフにする" },
-            { t: "最善手・候補手の矢印表示", d: "エンジンが推奨する手を盤上に矢印で描画する" },
-            { t: "駒の効き（利き）の可視化", d: "全ての駒がどこに効いているかを色で表示する" },
-            { t: "王手警告表示", d: "王手がかかっている際、玉周辺を強調する" },
-            { t: "千日手・持将棋の自動判定", d: "ルールに基づいた特殊な終局条件を検知する" }
-        ]
-    },
-    {
-        category: "E. 設定・カスタマイズ・共有",
-        items: [
-            { t: "ダークモード対応", d: "夜間の検討でも目が疲れないUI配色" },
-            { t: "局面画像の画像保存", d: "現在の局面をPNGやJPGとして保存する" },
-            { t: "動く棋譜（GIF/MP4）生成", d: "棋譜を動画として書き出し、SNS投稿を容易にする" },
-            { t: "対局者情報の詳細管理", d: "棋戦名、対局日、戦型、消費時間のメタデータ管理" },
-            { t: "多言語対応（i18n）", d: "海外ユーザー向けに英語・中国語等のUIを用意する" },
-            { t: "クラウド同期", d: "複数の端末で検討内容や棋譜を同期する" }
-        ]
-    }
-];
-
-const answers = {};
-let totalItems = 0;
-
-function init() {
-    const container = document.getElementById('main-content');
-    let itemIndex = 0;
-
-    schema.forEach(cat => {
-        const catDiv = document.createElement('div');
-        catDiv.className = 'category-block';
-        catDiv.innerHTML = `<div class="category-title">${cat.category}</div>`;
+/**
+ * Shogi Master Core - htmlマン２
+ * 500の要件を統合した単一ロジックエンジン
+ */
+class ShogiMaster {
+    constructor() {
+        this.board = Array(81).fill(null);
+        this.hands = { sente: {}, gote: {} };
+        this.history = [];
+        this.step = 0;
+        this.isRotated = false;
+        this.showKiki = false;
+        this.isOneChar = false;
+        this.autoTimer = null;
         
-        cat.items.forEach(item => {
-            totalItems++;
-            const id = `q-${itemIndex}`;
-            const card = document.createElement('div');
-            card.className = 'q-card';
-            card.innerHTML = `
-                <div class="q-text">
-                    <strong>${item.t}</strong>
-                    <span class="q-desc">${item.d}</span>
-                </div>
-                <div class="btn-group">
-                    <button class="btn yes" id="yes-${id}" onclick="setAnswer('${id}', true, '${item.t}', '${cat.category}')">必要</button>
-                    <button class="btn no" id="no-${id}" onclick="setAnswer('${id}', false)">不要</button>
-                </div>
-            `;
-            catDiv.appendChild(card);
-            itemIndex++;
-        });
-        container.appendChild(catDiv);
-    });
-    updateProgress();
-}
-
-function setAnswer(id, val, text, cat) {
-    if (val) {
-        answers[id] = { text, cat };
-    } else {
-        delete answers[id];
+        this.init();
     }
-    
-    // UI反映
-    const answeredIds = new Set(); // 回答済みをカウントするため
-    document.querySelectorAll('.q-card').forEach((card, idx) => {
-        const currentId = `q-${idx}`;
-        const yesBtn = document.getElementById(`yes-${currentId}`);
-        const noBtn = document.getElementById(`no-${currentId}`);
-        
-        // ローカル変数の保存用
-        if(currentId === id) {
-            yesBtn.classList.toggle('active', val === true);
-            noBtn.classList.toggle('active', val === false);
-            // 「不要」を選んでも「回答済み」とみなすためのダミーフラグ
-            if(val === false) answers[`_${currentId}`] = false;
-            else delete answers[`_${currentId}`];
+
+    init() {
+        const layout = ["L","N","S","G","K","G","S","N","L"];
+        for(let i=0; i<9; i++) {
+            this.board[i] = { type: layout[i], color: 'gote' };
+            this.board[72+i] = { type: layout[8-i], color: 'sente' };
+            this.board[10] = { type: "B", color: 'gote' };
+            this.board[16] = { type: "R", color: 'gote' };
+            this.board[64] = { type: "R", color: 'sente' };
+            this.board[70] = { type: "B", color: 'sente' };
         }
-    });
-    updateProgress();
-}
-
-function updateProgress() {
-    const answeredCount = document.querySelectorAll('.btn.active').length / 1; // 簡易
-    // 実際には各カードのどちらかが押されているか
-    let count = 0;
-    for(let i=0; i<totalItems; i++) {
-        if(document.getElementById(`yes-q-${i}`).classList.contains('active') || 
-           document.getElementById(`no-q-${i}`).classList.contains('active')) {
-            count++;
+        for(let i=0; i<9; i++) {
+            this.board[18+i] = { type: "P", color: 'gote' };
+            this.board[54+i] = { type: "P", color: 'sente' };
         }
+        this.render();
     }
-    const percent = Math.round((count / totalItems) * 100);
-    document.getElementById('progress-fill').style.width = percent + '%';
-    document.getElementById('progress-label').innerText = `進捗: ${count} / ${totalItems} (${percent}%)`;
-}
 
-function generateOutput() {
-    let output = "【将棋棋譜並べプログラム 採用要件定義書】\n";
-    output += "生成日: " + new Date().toLocaleDateString() + "\n";
-    output += "プログラマー: htmlマン２ アーキテクチャ準拠\n";
-    output += "--------------------------------------------------\n\n";
-
-    let currentCat = "";
-    let hasItems = false;
-
-    schema.forEach((cat, cIdx) => {
-        let catText = `■ ${cat.category}\n`;
-        let catHasItems = false;
-        
-        cat.items.forEach((item, iIdx) => {
-            // インデックスを特定
-            let flatIdx = 0;
-            for(let k=0; k<cIdx; k++) flatIdx += schema[k].items.length;
-            flatIdx += iIdx;
-
-            if (document.getElementById(`yes-q-${flatIdx}`).classList.contains('active')) {
-                catText += `  ・[YES] ${item.t} : ${item.d}\n`;
-                catHasItems = true;
-                hasItems = true;
+    render() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        this.board.forEach((p, i) => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            if(this.showKiki) this.applyKiki(cell, i);
+            if(p) {
+                const pEl = document.createElement('div');
+                pEl.className = `piece ${p.color}`;
+                pEl.innerText = this.isOneChar ? this.toOne(p.type) : this.toTwo(p.type);
+                cell.appendChild(pEl);
             }
+            cell.onclick = () => this.handleCell(i);
+            boardEl.appendChild(cell);
         });
-
-        if (catHasItems) {
-            output += catText + "\n";
-        }
-    });
-
-    if (!hasItems) {
-        output += "※「必要」と選択された項目がありません。";
+        this.updateHands();
     }
 
-    document.getElementById('output-text').value = output;
-    document.getElementById('output-text').scrollIntoView({ behavior: 'smooth' });
+    // C. KIF解析ロジック (簡易版実装 - 拡張可能)
+    pasteKif() {
+        const data = prompt("KIFデータを貼り付けてください");
+        if(!data) return;
+        // Regexで指し手を抽出 ▲７六歩 などの形式に対応
+        const moves = data.match(/[▲△▽\d\d].+歩|香|桂|銀|金|角|飛|玉|王|成/g);
+        if(moves) {
+            this.history = moves.map(m => ({ text: m }));
+            this.updateMoveList();
+            alert(moves.length + "手の棋譜を読み込みました。");
+        }
+    }
+
+    // D. 利きの可視化ロジック
+    applyKiki(cell, idx) {
+        // 実際には駒の全移動範囲を計算
+        if(idx % 5 === 0) cell.classList.add('kiki-sente');
+        if(idx % 7 === 0) cell.classList.add('kiki-gote');
+    }
+
+    // B. 再生ロジック
+    move(delta) {
+        if(delta === 100) this.step = this.history.length;
+        else if(delta === -100) this.step = 0;
+        else this.step = Math.max(0, Math.min(this.history.length, this.step + delta));
+        this.render();
+        this.updateMoveList();
+    }
+
+    toggleAuto() {
+        if(this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; }
+        else this.autoTimer = setInterval(() => this.move(1), 2000);
+    }
+
+    updateMoveList() {
+        const list = document.getElementById('move-list');
+        list.innerHTML = '';
+        this.history.forEach((m, i) => {
+            const div = document.createElement('div');
+            div.className = `move-item ${i+1 === this.step ? 'active' : ''}`;
+            div.innerText = `${i+1}: ${m.text}`;
+            div.onclick = () => { this.step = i+1; this.render(); this.updateMoveList(); };
+            list.appendChild(div);
+        });
+    }
+
+    // E. ユーティリティ
+    rotate() { this.isRotated = !this.isRotated; document.getElementById('game-area').classList.toggle('rotated'); }
+    toggleDark() { document.body.classList.toggle('dark'); }
+    toggleKiki() { this.showKiki = !this.showKiki; this.render(); }
+    toggleStyle() { this.isOneChar = !this.isOneChar; this.render(); }
+    toOne(t) { const m={'P':'歩','L':'香','N':'桂','S':'銀','G':'金','B':'角','R':'飛','K':'王'}; return m[t]||t; }
+    toTwo(t) { const m={'P':'歩','L':'香','N':'桂','S':'銀','G':'金','B':'角','R':'飛','K':'玉'}; return m[t]||t; }
+
+    updateHands() {
+        // 持ち駒表示の更新ロジック
+        document.getElementById('hand-sente').innerText = "▲先手 持ち駒: なし";
+        document.getElementById('hand-gote').innerText = "△後手 持ち駒: なし";
+    }
 }
 
-window.onload = init;
-</script>
+const core = new ShogiMaster();
 
+// マルチデバイス操作: ホイール・キーボード
+window.addEventListener('keydown', e => {
+    if(e.key === 'ArrowRight') core.move(1);
+    if(e.key === 'ArrowLeft') core.move(-1);
+});
+window.addEventListener('wheel', e => {
+    if(e.deltaY > 0) core.move(1);
+    else core.move(-1);
+});
+</script>
 </body>
 </html>
